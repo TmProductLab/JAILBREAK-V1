@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111717">
+  <meta name="description" content="Jailbreak is a two-player strategy game. Play a local match or challenge the computer.">
+  <title>JAILBREAK — Strategy Game</title>
+  <link rel="stylesheet" href="./style.css">
+  <script defer src="./game.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div><h1>JAILBREAK</h1><p>Two-player strategy game</p></div>
+    </div>
+    <div class="header-actions" id="match-nav" hidden>
+      <button class="button ghost" id="menu-button">Main menu</button>
+      <button class="button ghost" id="rules-button">How to play</button>
+      <button class="button ghost" id="settings-button">Settings</button>
+    </div>
+  </header>
+
+  <main class="start-page" id="start-page" aria-labelledby="start-heading">
+    <div class="start-art" aria-hidden="true">
+      <div class="poster-bars"></div>
+      <img class="poster-guard" src="./assets/guard.webp" alt="">
+      <img class="poster-prisoner" src="./assets/prisoner.webp" alt="">
+      <img class="poster-associate" src="./assets/associate.webp" alt="">
+    </div>
+    <section class="start-options">
+      <h2 id="start-heading" tabindex="-1">Plan your next move.</h2>
+      <p class="start-description">Help the Prisoner reach a gate or command Security and stop the escape.</p>
+      <button class="button brass resume-button" id="resume-button" hidden>Resume match <span aria-hidden="true">→</span></button>
+      <button class="mode-card" id="computer-button" aria-haspopup="dialog">
+        <span><strong>Play vs computer</strong><small>Choose Escape or Security.</small></span><span class="mode-arrow" aria-hidden="true">→</span>
+      </button>
+      <button class="mode-card" id="local-button">
+        <span><strong>Local two-player</strong><small>Take turns on this device.</small></span><span class="mode-arrow" aria-hidden="true">→</span>
+      </button>
+      <div class="start-links">
+        <button class="button ghost" id="start-help">How to play</button>
+        <button class="button ghost" id="start-settings">Settings</button>
+      </div>
+    </section>
+  </main>
+
+  <main class="layout" id="match-page" hidden>
+    <section class="play" aria-labelledby="board-heading">
+      <div class="board-heading"><h2 id="board-heading" tabindex="-1">Prison layout</h2><span class="mode" id="mode-label"></span></div>
+      <div class="turn-strip" id="turn-strip" data-team="escape">
+        <span class="turn-led" aria-hidden="true"></span>
+        <div class="turn-copy"><strong id="turn-title"></strong><span id="turn-note" role="status"></span></div>
+        <span class="turn-count" id="turn-count"></span>
+      </div>
+      <div class="board-frame">
+        <div class="board" id="board" aria-label="Jailbreak game board"></div>
+      </div>
+      <div class="action-bar" id="action-bar" hidden>
+        <button class="button brass" id="pass-button" hidden>Pass turn</button>
+        <button class="button brass" id="rematch-button" hidden>Play again</button>
+      </div>
+      <div class="move-options" id="move-options" aria-label="Available actions" hidden></div>
+      <div class="board-key" aria-label="Map key">
+        <span><i class="key-move"></i>Legal move</span>
+        <span><i class="key-sprint"></i>Two-space move</span>
+        <span><i class="key-special"></i>Special action</span>
+        <span><i class="key-lock"></i>No return</span>
+        <span><i class="key-tunnel"></i>Tunnel</span>
+      </div>
+    </section>
+
+    <aside class="sidebar" aria-label="Match information">
+      <section class="panel teams" aria-labelledby="teams-heading">
+        <h2 id="teams-heading">Teams</h2>
+        <div class="team" id="escape-team">
+          <img class="team-icon" src="./assets/prisoner.webp" alt="">
+          <div><h3>Escape</h3><p>Get the Prisoner through any gate.</p></div>
+          <span class="team-count" id="escape-count"></span>
+        </div>
+        <div class="team" id="security-team">
+          <img class="team-icon" src="./assets/guard.webp" alt="">
+          <div><h3>Security</h3><p>Capture the Prisoner outside Jail.</p></div>
+          <span class="team-count" id="security-count"></span>
+        </div>
+      </section>
+      <section class="panel activity" id="activity-panel" aria-labelledby="activity-heading">
+        <h2 id="activity-heading">Move log</h2>
+        <p class="empty-log" id="empty-log">The first move belongs to Escape.</p>
+        <ol id="move-log" aria-label="Newest moves first"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="setup-dialog" aria-labelledby="setup-title">
+    <form id="setup-form">
+      <h2 id="setup-title">Choose your side</h2>
+      <p>The computer controls the other team.</p>
+      <fieldset class="choices side-choices"><legend>Play as</legend>
+        <label><input type="radio" name="side" value="escape" checked><img src="./assets/prisoner.webp" alt=""><span><strong>Escape</strong><small>Get the Prisoner out through a gate.</small></span></label>
+        <label><input type="radio" name="side" value="security"><img src="./assets/guard.webp" alt=""><span><strong>Security</strong><small>Capture the Prisoner outside Jail.</small></span></label>
+      </fieldset>
+      <div class="dialog-actions"><button type="button" class="button ghost" data-close="setup-dialog">Cancel</button><button class="button brass" type="submit">Start match</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="rules-dialog" aria-labelledby="rules-heading">
+    <div class="rules">
+      <h2 id="rules-heading">How to play</h2>
+      <p>Escape moves first. Select one of your pieces, then tap a destination on the board or choose a move from the list. Each turn uses one action.</p>
+      <dl>
+        <dt>Corridors and Jail</dt><dd>Guards and Associates move one space at a time. The Prisoner can move one or two spaces in a straight line. Both spaces must be clear for a two-space move. Walls block movement in both directions. Leave the Jail onto any empty space immediately north, east, south, or west. Leaving takes one turn, and the Prisoner cannot reenter.</dd>
+        <dt>Push and displacement</dt><dd>Guards and Associates can push one another into an empty junction directly behind them. A pushed piece cannot return to its old junction on its next turn.</dd>
+        <dt>Sacrifice</dt><dd>The Prisoner can remove an adjacent Associate and take its place. Confirm this action before moving.</dd>
+        <dt>Capture</dt><dd>A Guard can move into the Prisoner’s junction to win. The Prisoner is safe inside Jail.</dd>
+        <dt>Escape gates</dt><dd>Move the Prisoner onto the corridor space directly inside one of the four perimeter gates, then use another turn to exit. An Associate directly behind the Prisoner can push them out to win. Opposing pieces can push each other out through a gate. The Prisoner can push an Associate out and take the space.</dd>
+        <dt>Secret tunnels</dt><dd>Revealed when the Prisoner stands on an entrance. On a later turn, the Prisoner may use the tunnel if the paired junction is empty. The connection hides when the Prisoner leaves the tunnel junctions.</dd>
+        <dt>Draw</dt><dd>Pass only if you have no legal action. The match draws after two consecutive passes or 60 total turns without a winner.</dd>
+      </dl>
+      <div class="dialog-actions"><button class="button brass" data-close="rules-dialog">Done</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-heading">
+    <h2 id="settings-heading">Settings</h2>
+    <form id="settings-form" class="settings-form">
+      <fieldset><legend>Audio</legend>
+        <label><span><strong>Sound effects</strong><small>Play sounds for moves and match results.</small></span><input type="checkbox" name="sound"></label>
+        <label class="volume-row"><span><strong>Volume</strong><small id="volume-value"></small></span><input type="range" name="volume" min="0" max="100" step="5"></label>
+        <button class="button ghost" type="button" id="sound-preview">Test sound</button>
+      </fieldset>
+      <fieldset><legend>Board and display</legend>
+        <label><span><strong>Move highlights</strong><small>Mark legal destinations on the board.</small></span><input type="checkbox" name="hints"></label>
+        <label><span><strong>Move log</strong><small>Show the history for the current match.</small></span><input type="checkbox" name="history"></label>
+        <label><span><strong>High contrast</strong><small>Make board markers and outlines easier to see.</small></span><input type="checkbox" name="contrast"></label>
+      </fieldset>
+      <div class="dialog-actions"><button class="button ghost" type="button" id="reset-settings">Reset defaults</button><button class="button brass" type="button" data-close="settings-dialog">Done</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="dialog-actions"><button class="button ghost" data-close="confirm-dialog">Cancel</button><button class="button brass" id="confirm-move">Confirm move</button></div>
+  </dialog>
+</body>
+</html>
+
