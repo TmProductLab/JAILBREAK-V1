@@ -433,7 +433,7 @@ dialog p { color: var(--muted); margin: 9px 0 15px; line-height: 1.5; font-size:
         <label><span><strong>Sound effects</strong><small>Play sounds for moves and match results.</small></span><input type="checkbox" name="sound"></label>
         <label class="volume-row"><span><strong>Effects volume</strong><small id="volume-value"></small></span><input type="range" name="volume" min="0" max="100" step="5"></label>
         <button class="button ghost" type="button" id="sound-preview">Test sound</button>
-        <label><span><strong>Background music</strong><small>Play a soft ambient loop during matches.</small></span><input type="checkbox" name="music"></label>
+        <label><span><strong>Background music</strong><small>Play quiet ambience during matches.</small></span><input type="checkbox" name="music"></label>
         <label class="volume-row"><span><strong>Music volume</strong><small id="music-volume-value"></small></span><input type="range" name="musicVolume" min="0" max="100" step="5"></label>
       </fieldset>
       <fieldset><legend>Board and display</legend>
@@ -699,7 +699,7 @@ let musicTrack;
 let moving = false;
 
 const preferenceKey = "jailbreak.preferences.v1";
-const defaults = { sound:true, volume:45, music:true, musicVolume:30, hints:true, history:true, contrast:false };
+const defaults = { sound:true, volume:45, music:true, musicVolume:15, hints:true, history:true, contrast:false };
 const footstep = at => ({at, noise:190, length:.065, level:.55});
 const scrape = at => ({at, noise:540, length:.17, level:.45});
 const hit = at => ({at, noise:145, length:.105, level:1});
@@ -789,24 +789,25 @@ function playSound(cue) {
 function composeMusicLoop() {
   const OfflineAudio = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   const rate = 16000;
-  const bar = 4.4;
-  const harmony = [
-    [45,52,55,60,64], [45,52,57,60,67], [41,48,55,57,64], [41,48,53,57,60],
-    [48,55,59,64,67], [43,50,57,59,62], [45,52,55,60,67], [45,52,57,60,64]
+  const duration = 36;
+  const offline = new OfflineAudio(2,duration*rate,rate);
+  const layers = [
+    { frequency:98, level:.013, pan:0, phase:0 },
+    { frequency:147, level:.010, pan:-.24, phase:1.3 },
+    { frequency:196, level:.008, pan:.29, phase:2.6 },
+    { frequency:245, level:.004, pan:-.46, phase:3.4 },
+    { frequency:294, level:.003, pan:.43, phase:4.7 }
   ];
-  const melody = [72,71,69,64,67,74,72,69];
-  const offline = new OfflineAudio(2,Math.ceil(bar*harmony.length*rate),rate);
-  function voice(midi,start,length,level,pan,type,attack) {
+  for (const {frequency,level,pan,phase} of layers) {
     const tone = offline.createOscillator();
     const envelope = offline.createGain();
     const stereo = offline.createStereoPanner?.();
-    tone.type = type;
-    tone.frequency.value = 440*Math.pow(2,(midi-69)/12);
-    const end = start+length;
-    envelope.gain.setValueAtTime(0,start);
-    envelope.gain.linearRampToValueAtTime(level,start+attack);
-    envelope.gain.exponentialRampToValueAtTime(.0001,end-.02);
-    envelope.gain.linearRampToValueAtTime(0,end);
+    tone.type = "sine";
+    tone.frequency.value = frequency;
+    // Complete cycles keep the tones and slow volume curves continuous at the loop point.
+    const swell = Float32Array.from({length:65},(_,i) =>
+      level*(.78+.22*Math.cos(2*Math.PI*i/64+phase)));
+    envelope.gain.setValueCurveAtTime(swell,0,duration);
     tone.connect(envelope);
     if (stereo) {
       stereo.pan.value = pan;
@@ -814,18 +815,9 @@ function composeMusicLoop() {
     } else {
       envelope.connect(offline.destination);
     }
-    tone.start(start);
-    tone.stop(end);
+    tone.start();
+    tone.stop(duration);
   }
-  harmony.forEach((chord,index) => {
-    const start = index*bar;
-    chord.forEach((midi,part) => {
-      const delay = part*.045;
-      voice(midi,start+delay,bar-delay,part === 0 ? .036 : .020,(part-2)*.22,"sine",.78);
-    });
-    voice(melody[index],start+1.05,2.5,.033,index%2 ? .4 : -.4,"sine",.14);
-    voice(melody[index]+12,start+1.05,1.1,.006,index%2 ? .4 : -.4,"sine",.065);
-  });
   return offline.startRendering();
 }
 
