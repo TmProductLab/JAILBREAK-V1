@@ -431,8 +431,10 @@ dialog p { color: var(--muted); margin: 9px 0 15px; line-height: 1.5; font-size:
     <form id="settings-form" class="settings-form">
       <fieldset><legend>Audio</legend>
         <label><span><strong>Sound effects</strong><small>Play sounds for moves and match results.</small></span><input type="checkbox" name="sound"></label>
-        <label class="volume-row"><span><strong>Volume</strong><small id="volume-value"></small></span><input type="range" name="volume" min="0" max="100" step="5"></label>
+        <label class="volume-row"><span><strong>Effects volume</strong><small id="volume-value"></small></span><input type="range" name="volume" min="0" max="100" step="5"></label>
         <button class="button ghost" type="button" id="sound-preview">Test sound</button>
+        <label><span><strong>Background music</strong><small>Play a soft ambient loop during matches.</small></span><input type="checkbox" name="music"></label>
+        <label class="volume-row"><span><strong>Music volume</strong><small id="music-volume-value"></small></span><input type="range" name="musicVolume" min="0" max="100" step="5"></label>
       </fieldset>
       <fieldset><legend>Board and display</legend>
         <label><span><strong>Move highlights</strong><small>Mark legal destinations on the board.</small></span><input type="checkbox" name="hints"></label>
@@ -692,10 +694,12 @@ let timer = 0;
 let matchStarted = false;
 let audioContext;
 let effectNoise;
+let musicBuffer;
+let musicTrack;
 let moving = false;
 
 const preferenceKey = "jailbreak.preferences.v1";
-const defaults = { sound:true, volume:45, hints:true, history:true, contrast:false };
+const defaults = { sound:true, volume:45, music:true, musicVolume:30, hints:true, history:true, contrast:false };
 const footstep = at => ({at, noise:190, length:.065, level:.55});
 const scrape = at => ({at, noise:540, length:.17, level:.45});
 const hit = at => ({at, noise:145, length:.105, level:1});
@@ -723,7 +727,9 @@ try {
   for (const key of Object.keys(defaults)) {
     if (typeof saved?.[key] === "boolean" && typeof defaults[key] === "boolean") preferences[key] = saved[key];
   }
-  if (Number.isFinite(saved?.volume) && saved.volume >= 0 && saved.volume <= 100) preferences.volume = saved.volume;
+  for (const key of ["volume","musicVolume"]) {
+    if (Number.isFinite(saved?.[key]) && saved[key] >= 0 && saved[key] <= 100) preferences[key] = saved[key];
+  }
 } catch {
   // Play is available even when the browser blocks local storage.
 }
@@ -780,21 +786,113 @@ function playSound(cue) {
   }
 }
 
+function composeMusicLoop() {
+  const OfflineAudio = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const rate = 16000;
+  const bar = 4.4;
+  const harmony = [
+    [45,52,55,60,64], [45,52,57,60,67], [41,48,55,57,64], [41,48,53,57,60],
+    [48,55,59,64,67], [43,50,57,59,62], [45,52,55,60,67], [45,52,57,60,64]
+  ];
+  const melody = [72,71,69,64,67,74,72,69];
+  const offline = new OfflineAudio(2,Math.ceil(bar*harmony.length*rate),rate);
+  function voice(midi,start,length,level,pan,type,attack) {
+    const tone = offline.createOscillator();
+    const envelope = offline.createGain();
+    const stereo = offline.createStereoPanner?.();
+    tone.type = type;
+    tone.frequency.value = 440*Math.pow(2,(midi-69)/12);
+    const end = start+length;
+    envelope.gain.setValueAtTime(0,start);
+    envelope.gain.linearRampToValueAtTime(level,start+attack);
+    envelope.gain.exponentialRampToValueAtTime(.0001,end-.02);
+    envelope.gain.linearRampToValueAtTime(0,end);
+    tone.connect(envelope);
+    if (stereo) {
+      stereo.pan.value = pan;
+      envelope.connect(stereo).connect(offline.destination);
+    } else {
+      envelope.connect(offline.destination);
+    }
+    tone.start(start);
+    tone.stop(end);
+  }
+  harmony.forEach((chord,index) => {
+    const start = index*bar;
+    chord.forEach((midi,part) => {
+      const delay = part*.045;
+      voice(midi,start+delay,bar-delay,part === 0 ? .036 : .020,(part-2)*.22,"sine",.78);
+    });
+    voice(melody[index],start+1.05,2.5,.033,index%2 ? .4 : -.4,"sine",.14);
+    voice(melody[index]+12,start+1.05,1.1,.006,index%2 ? .4 : -.4,"sine",.065);
+  });
+  return offline.startRendering();
+}
+
+function musicWanted() {
+  return matchStarted && !byId("match-page").hidden && !state.result && preferences.music && preferences.musicVolume > 0;
+}
+
+function syncMusic() {
+  if (!musicWanted()) {
+    if (musicTrack) {
+      const { source,gain } = musicTrack;
+      musicTrack = null;
+      gain.gain.setTargetAtTime(0,audioContext.currentTime,.06);
+      source.stop(audioContext.currentTime+.32);
+    }
+    return;
+  }
+  if (musicTrack) {
+    musicTrack.gain.gain.setTargetAtTime(preferences.musicVolume/100,audioContext.currentTime,.08);
+    return;
+  }
+  const Audio = window.AudioContext || window.webkitAudioContext;
+  if (!Audio || !(window.OfflineAudioContext || window.webkitOfflineAudioContext)) return;
+  try {
+    audioContext ??= new Audio();
+    const ready = audioContext.state === "running" ? Promise.resolve() : audioContext.resume();
+    musicBuffer ??= composeMusicLoop().catch(error => {
+      musicBuffer = null;
+      throw error;
+    });
+    Promise.all([ready,musicBuffer]).then(([,buffer]) => {
+      if (!musicWanted() || musicTrack) return;
+      const source = audioContext.createBufferSource();
+      const gain = audioContext.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.value = 0;
+      source.connect(gain).connect(audioContext.destination);
+      source.onended = () => { source.disconnect(); gain.disconnect(); };
+      source.start();
+      musicTrack = { source,gain };
+      gain.gain.setTargetAtTime(preferences.musicVolume/100,audioContext.currentTime,.25);
+    }).catch(() => {});
+  } catch {
+    // Background music is optional on devices without a working audio context.
+  }
+}
+
 function applyPreferences() {
   for (const key of ["hints","contrast"]) board.dataset[key] = String(preferences[key]);
   byId("activity-panel").hidden = !preferences.history;
-  for (const key of ["sound","hints","history","contrast"]) {
+  for (const key of ["sound","music","hints","history","contrast"]) {
     preferencesForm.elements[key].checked = preferences[key];
   }
   preferencesForm.elements.volume.value = preferences.volume;
   preferencesForm.elements.volume.disabled = !preferences.sound;
   byId("volume-value").textContent = preferences.volume+"%";
   byId("sound-preview").disabled = !preferences.sound || !preferences.volume;
+  preferencesForm.elements.musicVolume.value = preferences.musicVolume;
+  preferencesForm.elements.musicVolume.disabled = !preferences.music;
+  byId("music-volume-value").textContent = preferences.musicVolume+"%";
 }
 
 function savePreferences() {
   try { localStorage.setItem(preferenceKey,JSON.stringify(preferences)); } catch {}
   applyPreferences();
+  syncMusic();
   render();
 }
 
@@ -804,6 +902,7 @@ function showMatch(show) {
   byId("match-nav").hidden = !show;
   byId("resume-button").hidden = !matchStarted;
   (show ? byId("board-heading") : byId("start-heading")).focus();
+  syncMusic();
   scheduleComputer();
 }
 
@@ -1163,7 +1262,10 @@ async function commit(action) {
   }
   recent.unshift({ number: state.turns+1, text: describeMove(action) });
   state = game.apply(state,action);
-  if (state.result) playSound(state.result.winner === "draw" ? "draw" : "finish");
+  if (state.result) {
+    syncMusic();
+    playSound(state.result.winner === "draw" ? "draw" : "finish");
+  }
   selected = null;
   pending = null;
   render();
@@ -1245,7 +1347,7 @@ preferencesForm.addEventListener("submit", event => event.preventDefault());
 preferencesForm.addEventListener("input", event => {
   const { name, checked, valueAsNumber } = event.target;
   if (!Object.hasOwn(defaults,name)) return;
-  preferences[name] = name === "volume" ? valueAsNumber : checked;
+  preferences[name] = typeof defaults[name] === "number" ? valueAsNumber : checked;
   savePreferences();
 });
 byId("reset-settings").addEventListener("click", () => {
